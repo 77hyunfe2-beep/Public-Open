@@ -30,7 +30,7 @@
   #sentence{font-size:clamp(20px,2.6vw,32px);font-weight:800;line-height:1.25;text-wrap:balance;min-height:1.3em}
   #heard{font-size:16px;color:var(--muted);min-height:1.4em;margin-top:6px;line-height:1.5}
   #heard .w{padding:0 2px;border-radius:4px}
-  #heard .hit{color:var(--ok)} #heard .miss{color:var(--danger);text-decoration:line-through}
+  #heard .hit{color:var(--ok)} #heard .miss{color:var(--danger);text-decoration:line-through} #heard .todo{color:var(--muted);opacity:.6}
   #status{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:4px}
   #controls{display:flex;flex-direction:column;align-items:center;gap:8px}
   #mic{width:92px;height:92px;border-radius:50%;border:0;background:var(--panel2);color:#fff;font-size:40px;cursor:pointer;box-shadow:0 4px 0 #000;position:relative}
@@ -53,6 +53,10 @@
   .card .big:active{transform:translateY(3px);box-shadow:0 2px 0 #000}
   .card .big:focus-visible{outline:3px solid #fff}
   .card ul{text-align:left;color:var(--ink);font-size:15px;line-height:1.6;padding-left:20px}
+  .log{text-align:left;max-height:34vh;overflow-y:auto;background:rgba(0,0,0,.3);border-radius:10px;padding:8px 12px;margin:8px 0;font-size:13px}
+  .logh{font-family:var(--display);font-size:18px;letter-spacing:1px;color:var(--moon);margin-bottom:4px}
+  .logr{display:grid;grid-template-columns:70px 1fr;gap:0 8px;padding:4px 0;border-top:1px solid rgba(255,255,255,.08)}
+  .lg{font-weight:800;font-size:12px} .lt{color:var(--ink)} .lh{grid-column:2;color:var(--muted);font-size:12px}
   #banner{position:absolute;left:0;right:0;top:34%;text-align:center;pointer-events:none;z-index:4;font-family:var(--display);font-size:76px;color:var(--moon);text-shadow:4px 4px 0 #000;letter-spacing:3px;opacity:0;transition:opacity .25s}
   #banner.show{opacity:1}
   #banner small{display:block;font-family:var(--body);font-weight:800;font-size:20px;color:#fff;letter-spacing:1px}
@@ -100,8 +104,9 @@
     <div id="overlay">
       <div class="card" id="card">
         <h1>ZOMBIE SPEAK</h1>
-        <p>A zombie is coming, holding a sentence. <b>Say the sentence out loud</b> clearly before it reaches you and it explodes!</p>
+        <p>A zombie is coming, holding a sentence. <b>Say it out loud</b> — every correct word fires at the zombie and pushes it back; finish the sentence to knock it down!</p>
         <ul>
+          <li>⭐ Fast, accurate, no pauses = <b>PERFECT</b> → double points and an item drops. GREAT = 1.5×. Combos stack.</li>
           <li>🎤 The mic listens automatically. Press <b>Space</b> to toggle it. <b>L</b> plays the sentence.</li>
           <li>⏱ Time Stop (key 1) freezes the zombie. 💣 Bomb (key 2) blows up a sentence you want to skip.</li>
           <li>❤ You have 3 lives. Beat 5 zombies to meet the level boss.</li>
@@ -136,8 +141,12 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.80.1/phaser.min.js"></script>
 <script>
-/* ================= CONTENT ================= */
-const LEVELS = [
+/* ================= CONTENT PACK =================
+   Everything the game *says* lives here; the engine below never hard-codes sentences.
+   To swap content without touching the engine, upload a content.json next to index.html
+   with the same shape ({ killsPerLevel, pass, worlds:[{ name, sky, hill, speed, bossSpeed, sentences:[...], boss:[...] }] }).
+   A card can be a plain string (type "read") or an object { type:'read', text:'...' }. More card types come in phase 2. */
+const CONTENT = { title:'Zombie Speak', killsPerLevel:5, pass:0.75, worlds:[
  { name:'The Backyard', sky:[0x1b1740,0x3b2a6b], hill:0x233a2a, speed:38, bossSpeed:26,
    sentences:[
     "My brother collects unusual rocks from the riverbank.",
@@ -208,12 +217,19 @@ const LEVELS = [
     "The zombie king climbed the observatory tower to claim the moon as his personal snack.",
     "Astonishingly, the telescope revealed that the moon was merely a distant rocky sphere.",
     "Humbled by the vastness of the universe, the zombie king finally surrendered to the children."] },
-];
-const KILLS_PER_LEVEL = 5, PASS = 0.75, W = 1280, H = 720, GROUND = 610, PLAYER_X = 210, REACH_X = 330;
+]};
+let LEVELS = CONTENT.worlds, KILLS_PER_LEVEL = CONTENT.killsPerLevel, PASS = CONTENT.pass;
+const W = 1280, H = 720, GROUND = 610, PLAYER_X = 210, REACH_X = 330;
+const toCard = c => typeof c==='string' ? {type:'read', text:c} : c;
+function applyContent(c){ if(!c||!Array.isArray(c.worlds)||!c.worlds.length) return false;
+  c.worlds.forEach(w=>{ if(Array.isArray(w.sky)) w.sky=w.sky.map(v=>typeof v==='string'?parseInt(v.replace('#',''),16):v); if(typeof w.hill==='string') w.hill=parseInt(w.hill.replace('#',''),16); });
+  LEVELS=c.worlds; if(c.killsPerLevel) KILLS_PER_LEVEL=c.killsPerLevel; if(c.pass) PASS=c.pass; return true; }
+// optional external pack: content.json beside this file (ignored when missing or when opened as a local file)
+if(location.protocol.startsWith('http')) fetch('content.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(c=>{ if(applyContent(c)) console.log('content.json loaded:',LEVELS.length,'worlds'); }).catch(()=>{});
 
 /* ================= GAME STATE ================= */
 const G = { level:0, lives:3, score:0, kills:0, combo:0, stop:2, bomb:2, state:'title',
-  target:'', targetWords:[], boss:false, bossIdx:0, pool:[], frozen:false, accepting:false };
+  target:'', targetWords:[], boss:false, bossIdx:0, pool:[], frozen:false, accepting:false, log:[], perfects:0 };
 const $ = id => document.getElementById(id);
 
 /* ================= AUDIO (synth) ================= */
@@ -242,7 +258,10 @@ const SFX = {
   timestop(){ tone(1400,0.7,'sine',0.3,180); setTimeout(()=>tone(300,0.4,'sine',0.2,600),300); },
   levelup(){ [392,523,659,784,1046,1318].forEach((f,i)=>setTimeout(()=>tone(f,0.25,'triangle',0.18),i*90)); },
   bossroar(){ tone(60,1.2,'sawtooth',0.35,40,400); noise(0.8,0.3,300); },
-  pickup(){ tone(880,0.12,'square',0.12,1320); }
+  pickup(){ tone(880,0.12,'square',0.12,1320); },
+  shoot(){ tone(900,0.12,'square',0.12,300); },
+  hit(){ noise(0.12,0.3,1200); tone(220,0.1,'triangle',0.2,120); },
+  fizzle(){ noise(0.2,0.15,600); tone(300,0.25,'sawtooth',0.08,80); }
 };
 
 /* ================= SPEECH: recognition & TTS ================= */
@@ -260,9 +279,9 @@ function evaluate(saidWords){
   const t=G.targetWords; const tail=saidWords.slice(-(t.length+5));
   const r=lcsMask(t, tail); return {ratio:r.count/t.length, mask:r.mask, tail};
 }
-function renderHeard(res, raw){
+function renderHeard(res, raw, showMiss){
   if(!res){ $('heard').textContent = raw||''; return; }
-  $('heard').innerHTML = G.targetWords.map((w,i)=>`<span class="w ${res.mask[i]?'hit':'miss'}">${w}</span>`).join(' ') +
+  $('heard').innerHTML = G.targetWords.map((w,i)=>`<span class="w ${res.mask[i]?'hit':(showMiss?'miss':'todo')}">${w}</span>`).join(' ') +
     ` <span style="opacity:.7">— ${Math.round(res.ratio*100)}%</span>`;
 }
 const IS_MOBILE = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints>1 && matchMedia('(pointer:coarse)').matches);
@@ -290,15 +309,43 @@ function setupSR(){
     for(let i=0;i<e.results.length;i++){ const r=e.results[i];
       if(r.isFinal){ if(i>=lastFinalCount){ // pick the alternative that matches the target best, append to the running buffer
           let bt=r[0].transcript, bs=-1; for(let k=0;k<r.length;k++){ const s=evaluate(normWords(r[k].transcript)).ratio; if(s>bs){bs=s;bt=r[k].transcript;} }
-          buffer.push(...normWords(bt)); lastFinalCount=i+1; gotFinal=true; } }
+          buffer.push(...normWords(bt)); lastFinalCount=i+1; gotFinal=true;
+          if(typeof r[0].confidence==='number' && r[0].confidence>0) A.conf.push(r[0].confidence); } }
       else interim += r[0].transcript+' '; }
     const said = buffer.concat(normWords(interim));
-    const res = evaluate(said);
-    renderHeard(res, said.join(' '));
-    if(res.ratio>=PASS){ scene.zombieKilled(true, res.ratio); return; }
-    // a final segment finished and it was a real attempt but wrong → penalty
-    if(gotFinal && buffer.length >= G.targetWords.length*0.8){ scene.wrongAttempt(res); }
+    onSpeech(said, gotFinal);
   };
+}
+/* ---- attempt tracker: timing, fluency, word-by-word firing ---- */
+const A = { t0:0, tLast:0, pauses:0, fired:[], wrongCount:0, conf:[] };
+function resetAttempt(){ A.t0=0; A.tLast=0; A.pauses=0; A.fired=new Array(G.targetWords.length).fill(false); A.wrongCount=0; A.conf=[]; }
+function onSpeech(said, gotFinal){
+  const now=performance.now();
+  if(said.length && !A.t0) A.t0=now;
+  if(A.tLast && now-A.tLast>1400 && said.length<G.targetWords.length) A.pauses++;   // a long gap mid-sentence
+  A.tLast=now;
+  const res=evaluate(said);
+  renderHeard(res, said.join(' '));
+  // every newly matched target word becomes a projectile
+  res.mask.forEach((m,i)=>{ if(m&&!A.fired[i]){ A.fired[i]=true; scene.fireWord(G.targetWords[i]); } });
+  // words that don't belong → misfire puff (rate-limited)
+  const wrong=said.length-res.mask.filter(Boolean).length;
+  if(wrong>A.wrongCount){ scene.misfire(said[said.length-1]); A.wrongCount=wrong; }
+  // near-perfect → instant knockdown; otherwise wait for the sentence to end and accept ≥ PASS
+  if(res.ratio>=0.95 || (gotFinal && res.ratio>=PASS)){ finishAttempt(res, said); return; }
+  if(gotFinal && buffer.length >= G.targetWords.length*0.8){ scene.wrongAttempt(res); }
+}
+function finishAttempt(res, said){
+  const words=G.targetWords.length, elapsed=Math.max(0.3,(performance.now()-A.t0)/1000);
+  const expected=0.45*words+0.9;                       // comfortable pace for a 9-10 year old
+  const speed=Math.min(1.6, expected/elapsed);         // >1 = faster than expected
+  const conf=A.conf.length?A.conf.reduce((a,b)=>a+b,0)/A.conf.length:null;
+  let grade='OK';
+  if(res.ratio>=0.95 && speed>=0.8 && A.pauses===0 && (conf===null||conf>=0.75)) grade='PERFECT';
+  else if(res.ratio>=0.85 && speed>=0.55 && A.pauses<=1) grade='GREAT';
+  const stats={ratio:res.ratio, speed, pauses:A.pauses, conf, grade, elapsed};
+  G.log.push({text:G.target, heard:said.slice(-(words+5)).join(' '), grade, ratio:res.ratio});
+  scene.zombieKilled(true, stats);
 }
 function startListening(){ if(!rec) return; wantListen=true; if(!listening){ try{ rec.start(); }catch(e){} } }
 function stopListening(){ wantListen=false; if(rec&&listening){ try{ rec.stop(); }catch(e){} } }
@@ -416,8 +463,8 @@ class Main extends Phaser.Scene {
   }
   spawnZombie(){
     const L=LEVELS[G.level];
-    if(G.boss){ G.target=L.boss[G.bossIdx]; } else { if(!G.pool.length) G.pool=Phaser.Utils.Array.Shuffle(L.sentences.slice()); G.target=G.pool.pop(); }
-    G.targetWords=normWords(G.target);
+    let card; if(G.boss){ card=toCard(L.boss[G.bossIdx]); } else { if(!G.pool.length) G.pool=Phaser.Utils.Array.Shuffle(L.sentences.slice()); card=toCard(G.pool.pop()); }
+    G.card=card; G.target=card.text; G.targetWords=normWords(G.target); resetAttempt();
     const body=this.add.image(0,0,'z1').setOrigin(0.5,1);
     const s=G.boss?1.8:1.05;
     const sign=this.add.container(0,-215*s);
@@ -434,7 +481,7 @@ class Main extends Phaser.Scene {
     z.walk=this.time.addEvent({delay:G.boss?320:220,loop:true,callback:()=>{ z.frame^=1; body.setTexture(z.frame?'z2':'z1'); body.y=z.frame?-4:0; sign.angle=z.frame?2:-2; }});
     this.zombie=z; buffer=[];
     if(G.boss) SFX.bossroar(); else SFX.growl();
-    $('sentence').textContent=G.target; $('heard').textContent='';
+    $('sentence').textContent=G.target; $('heard').textContent=''; $('typed').value='';
     G.accepting=true;
     resetRecognizer(); if($('autoMic').checked && !$('typeMode').checked) setTimeout(startListening,150);
     setStatus(G.boss?`BOSS — sentence ${G.bossIdx+1} of 3`:'say the sentence clearly (L = listen first)');
@@ -442,7 +489,7 @@ class Main extends Phaser.Scene {
   update(t,dt){
     const z=this.zombie; this.fog[0].x-=dt*0.01; if(this.fog[0].x<-300) this.fog[0].x=W+300; this.fog[1].x-=dt*0.006; if(this.fog[1].x<-300) this.fog[1].x=W+300;
     if(!z||!z.alive||G.state!=='play') return;
-    if(!G.frozen) z.x-=z.speed*dt/1000;
+    if(z.stun>0) z.stun-=dt; else if(!G.frozen) z.x-=z.speed*dt/1000;
     const d=Phaser.Math.Clamp((z.x-REACH_X)/(W+120-REACH_X),0,1); // 1 far → 0 near
     const danger=Math.pow(1-d,2);
     $('vignette').style.boxShadow=`inset 0 0 ${60+danger*200}px ${danger*40}px rgba(255,77,90,${danger*0.7})`;
@@ -459,12 +506,36 @@ class Main extends Phaser.Scene {
       onComplete:()=>{ this.dust.explode(big?45:22,z.x+40*s,z.y-6); this.cameras.main.shake(big?350:160,big?0.012:0.006); noise(0.25,0.35,500);
         this.tweens.add({targets:z,alpha:0,y:z.y+10,duration:500,delay:400,onComplete:()=>z.destroy()}); }});
   }
-  zombieKilled(spoken,ratio){
+  fireWord(word){ // a recognised word flies from the megaphone and knocks the zombie back
+    const z=this.zombie; if(!z||!z.alive) return;
+    const t=this.add.text(PLAYER_X+95,GROUND-66,word.toUpperCase(),{fontFamily:'Bangers, Impact, sans-serif',fontSize:'30px',color:'#ffd166',stroke:'#000',strokeThickness:5}).setOrigin(0,0.5).setDepth(15);
+    const glow=this.add.image(t.x,t.y,'spark').setScale(2.2).setAlpha(0.7).setBlendMode('ADD').setDepth(14);
+    SFX.shoot(); this.tweens.add({targets:this.player,x:PLAYER_X-6,duration:60,yoyo:true});
+    const dist=Math.max(60,z.x-70-t.x), dur=Math.min(380,140+dist*0.3);
+    this.tweens.add({targets:[t,glow],x:`+=${dist}`,duration:dur,ease:'Quad.in',onUpdate:()=>{ glow.x=t.x; },onComplete:()=>{
+      t.destroy(); glow.destroy(); const zz=this.zombie; if(!zz||!zz.alive) return;
+      this.sparks.explode(10,zz.x-30,zz.y-80*zz.body.scaleX); SFX.hit();
+      zz.body.setTint(0xffffff); this.time.delayedCall(80,()=>{ if(zz.active) zz.body.clearTint(); });
+      const push=G.boss?22:42; this.tweens.add({targets:zz,x:zz.x+push,duration:120,ease:'Quad.out'});
+      zz.stun=180; }});
+  }
+  misfire(word){ // a word that isn't in the sentence fizzles out of the megaphone
+    const t=this.add.text(PLAYER_X+100,GROUND-70,(word||'?'),{fontFamily:'Nunito, sans-serif',fontSize:'20px',fontStyle:'bold',color:'#ff4d5a',stroke:'#000',strokeThickness:3}).setOrigin(0,0.5).setDepth(15);
+    this.dust.explode(6,PLAYER_X+105,GROUND-66); SFX.fizzle();
+    this.tweens.add({targets:t,x:'+=50',y:'+=60',angle:40,alpha:0,duration:600,ease:'Quad.in',onComplete:()=>t.destroy()});
+  }
+  zombieKilled(spoken,stats){
     const z=this.zombie; if(!z||!z.alive) return; z.alive=false; G.accepting=false; z.walk.remove();
     this.knockDown(z,G.boss,!spoken); this.zombie=null;
     if(spoken){
-      G.combo++; const gain=Math.round(G.targetWords.length*10*(1+Math.min(G.combo-1,5)*0.25)*(ratio>=0.95?1.5:1));
-      G.score+=gain; SFX.success(); setStatus(`+${gain}  ${ratio>=0.95?'PERFECT!':'nice!'}`);
+      const mult={PERFECT:2,GREAT:1.5,OK:1}[stats.grade];
+      if(stats.grade==='OK') G.combo=0; else G.combo++;
+      const gain=Math.round(G.targetWords.length*10*mult*(1+Math.min(G.combo,5)*0.2));
+      G.score+=gain; SFX.success();
+      const line=`accuracy ${Math.round(stats.ratio*100)}% · speed ${stats.speed.toFixed(1)}× · ${stats.pauses?stats.pauses+' pause'+(stats.pauses>1?'s':''):'no pauses'}${stats.conf!==null?' · clarity '+Math.round(stats.conf*100)+'%':''}`;
+      flashBanner(stats.grade==='PERFECT'?'PERFECT!':stats.grade==='GREAT'?'GREAT!':'OK', `+${gain}  ·  ${line}`, 1400);
+      setStatus(`+${gain} · ${line}`);
+      if(stats.grade==='PERFECT'){ G.perfects++; SFX.levelup(); this.dropItem(z.x); }
       this.tweens.add({targets:this.player,y:GROUND-40,duration:150,yoyo:true});
     }
     if(G.boss){ G.bossIdx++; if(G.bossIdx>=3){ this.levelCleared(); return; } this.time.delayedCall(900,()=>this.spawnZombie()); updateHud(); return; }
@@ -473,11 +544,20 @@ class Main extends Phaser.Scene {
     if(G.kills>=KILLS_PER_LEVEL){ G.boss=true; G.bossIdx=0; flashBanner('BOSS INCOMING!','Three sentences to defeat it',1800); this.time.delayedCall(1900,()=>this.spawnZombie()); }
     else this.time.delayedCall(900,()=>this.spawnZombie());
   }
+  dropItem(x){ // PERFECT reward: an item pops out of the zombie and flies to the HUD
+    const kind=(G.stop<=G.bomb&&G.stop<3)?'stop':(G.bomb<3?'bomb':(G.stop<3?'stop':null));
+    if(!kind){ G.score+=100; flashBanner('+100 BONUS','items full',900); return; }
+    const icon=this.add.text(x,GROUND-120,kind==='stop'?'⏱':'💣',{fontSize:'48px'}).setOrigin(0.5).setDepth(16);
+    this.tweens.add({targets:icon,y:GROUND-220,duration:350,ease:'Quad.out',onComplete:()=>{
+      this.tweens.add({targets:icon,x:W/2,y:30,scale:0.6,duration:600,ease:'Quad.in',onComplete:()=>{ icon.destroy(); if(kind==='stop') G.stop++; else G.bomb++; SFX.pickup(); updateHud(); }}); }});
+  }
   wrongAttempt(res){
-    const z=this.zombie; if(!z||!z.alive) return; G.combo=0; SFX.fail(); SFX.growl();
+    const z=this.zombie; if(!z||!z.alive) return; G.combo=0; SFX.fail(); SFX.growl(); renderHeard(res, '', true);
     this.tweens.add({targets:z,x:z.x-70,duration:220,ease:'Back.out'}); this.cameras.main.shake(120,0.005);
     const missed=G.targetWords.filter((w,i)=>!res.mask[i]).slice(0,4).join(', ');
     setStatus(`not quite — try again${missed?' (missed: '+missed+')':''}`);
+    G.log.push({text:G.target, heard:res.tail.join(' '), grade:'MISS', ratio:res.ratio});
+    A.fired.fill(false); A.wrongCount=0;  // words can be fired again on the retry
     resetRecognizer(); // clear buffer so the next attempt starts fresh
   }
   zombieReached(){
@@ -491,13 +571,13 @@ class Main extends Phaser.Scene {
   }
   levelCleared(){
     G.boss=false; G.kills=0; G.pool=[]; G.level++; SFX.levelup(); updateHud();
-    if(G.level>=LEVELS.length){ G.state='won'; stopListening(); showCard(`<h2>YOU WIN!</h2><p>All five bosses defeated. Final score <b style="color:#fff">${G.score}</b>.</p><button class="big" id="btnAgain">PLAY AGAIN</button>`); return; }
+    if(G.level>=LEVELS.length){ G.state='won'; stopListening(); releaseMic(); showCard(`<h2>YOU WIN!</h2><p>All bosses defeated. Final score <b style="color:#fff">${G.score}</b> · ${G.perfects} PERFECT</p>${logHtml()}<button class="big" id="btnAgain">PLAY AGAIN</button>`); return; }
     flashBanner(`LEVEL ${G.level+1}`,LEVELS[G.level].name,2000);
     this.tweens.add({targets:[this.bg,this.hills],alpha:0,duration:300,yoyo:true,onYoyo:()=>{ this.drawBackground(G.level); this.drawHills(G.level); }});
     this.time.delayedCall(2100,()=>this.spawnZombie());
   }
-  gameOver(){ G.state='over'; stopListening(); $('vignette').style.boxShadow='none';
-    showCard(`<h2>GAME OVER</h2><p>Score <b style="color:#fff">${G.score}</b> · reached ${LEVELS[G.level].name}</p><button class="big" id="btnAgain">TRY AGAIN</button>`); }
+  gameOver(){ G.state='over'; stopListening(); releaseMic(); $('vignette').style.boxShadow='none';
+    showCard(`<h2>GAME OVER</h2><p>Score <b style="color:#fff">${G.score}</b> · reached ${LEVELS[G.level].name} · ${G.perfects} PERFECT</p>${logHtml()}<button class="big" id="btnAgain">TRY AGAIN</button>`); }
   timeStop(){
     G.frozen=true; SFX.timestop(); this.iceOverlay.setAlpha(0.28); const z=this.zombie; if(z){ z.walk.paused=true; z.body.setTint(0x9fe8ff); }
     this.tweens.add({targets:this.iceOverlay,alpha:0,duration:6000,ease:'Quad.in'});
@@ -515,9 +595,15 @@ function updateHud(){
 }
 let bannerT=null;
 function flashBanner(big,small,ms){ const b=$('banner'); b.innerHTML=`${big}<small>${small||''}</small>`; b.classList.add('show'); clearTimeout(bannerT); bannerT=setTimeout(()=>b.classList.remove('show'),ms); }
+function logHtml(){ // speaking log for the parent: what was asked, what was heard, how it was graded
+  if(!G.log.length) return '';
+  const col={PERFECT:'var(--gold)',GREAT:'var(--ok)',OK:'var(--ice)',MISS:'var(--danger)'};
+  return `<div class="log"><div class="logh">Speaking log</div>`+G.log.slice(-40).map(l=>`<div class="logr"><span class="lg" style="color:${col[l.grade]}">${l.grade}</span><span class="lt">${l.text}</span><span class="lh">heard: ${l.heard||'—'}</span></div>`).join('')+`</div>`;
+}
 function showCard(html){ $('card').innerHTML=html; $('overlay').classList.remove('hidden'); const a=$('btnAgain'); if(a) a.onclick=startGame; }
 function startGame(){
-  Object.assign(G,{level:0,lives:3,score:0,kills:0,combo:0,stop:2,bomb:2,state:'play',boss:false,bossIdx:0,pool:[],frozen:false});
+  Object.assign(G,{level:0,lives:3,score:0,kills:0,combo:0,stop:2,bomb:2,state:'play',boss:false,bossIdx:0,pool:[],frozen:false,log:[],perfects:0});
+  if(!micStream && !$('typeMode').checked) requestMic();
   ac(); $('overlay').classList.add('hidden'); updateHud(); scene.drawBackground(0); scene.drawHills(0);
   flashBanner('LEVEL 1',LEVELS[0].name,1600); scene.time.delayedCall(1500,()=>scene.spawnZombie());
 }
@@ -539,11 +625,13 @@ function runDiag(extra){
   $('diag').innerHTML=rows.join('<br>');
 }
 async function micPermissionState(){ try{ const p=await navigator.permissions.query({name:'microphone'}); return p.state; }catch(e){ return 'unknown'; } }
+let micStream=null;
 async function requestMic(){ // explicit permission prompt before the game starts
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ return {ok:false,why:'getUserMedia unavailable (blocked by this viewer)'}; }
-  try{ const s=await navigator.mediaDevices.getUserMedia({audio:true}); s.getTracks().forEach(t=>t.stop()); return {ok:true}; }
-  catch(e){ return {ok:false,why:e.name+(e.message?': '+e.message:'')}; }
+  try{ micStream=await navigator.mediaDevices.getUserMedia({audio:true}); return {ok:true}; }   // keep the stream open for the whole game →
+  catch(e){ return {ok:false,why:e.name+(e.message?': '+e.message:'')}; }                      //   Chrome won't re-ask each time recognition restarts
 }
+function releaseMic(){ if(micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream=null; } }
 runDiag();
 micPermissionState().then(st=>runDiag(`Mic permission: ${st}`));
 $('btnStart').onclick=async()=>{
@@ -562,7 +650,8 @@ $('btnStop').onclick=useTimeStop; $('btnBomb').onclick=useBomb;
 $('btnMute').onclick=()=>{ muted=!muted; $('btnMute').textContent=muted?'🔇 Muted':'🔈 Sound'; };
 $('autoMic').onchange=e=>{ if(e.target.checked) startListening(); else stopListening(); };
 $('typeMode').onchange=e=>{ $('typed').classList.toggle('show',e.target.checked); if(e.target.checked){ stopListening(); $('typed').focus(); } else startListening(); };
-$('typed').addEventListener('keydown',e=>{ if(e.key==='Enter'&&G.accepting){ const res=evaluate(normWords(e.target.value)); renderHeard(res); e.target.value=''; if(res.ratio>=PASS) scene.zombieKilled(true,res.ratio); else scene.wrongAttempt(res); } });
+$('typed').addEventListener('input',e=>{ if(G.accepting) onSpeech(normWords(e.target.value),false); });
+$('typed').addEventListener('keydown',e=>{ if(e.key==='Enter'&&G.accepting){ const w=normWords(e.target.value); e.target.value=''; buffer=w.slice(); onSpeech(w,true); } });
 setupSR();
 if(IN_APP||IN_FRAME||IS_FILE){ $('micHint').style.display='block'; }
 if(IS_MOBILE){ document.body.classList.add('mobile'); }
