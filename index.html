@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zombie Speak</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bangers&family=Nunito:wght@600;800&display=swap">
+<style>
+  :root{
+    --night:#141232; --panel:#1f1c46; --panel2:#2a2660; --ink:#f3efff; --muted:#a9a3d6;
+    --moon:#ffe9a8; --zombie:#7fd069; --wood:#c98a4b; --danger:#ff4d5a; --ice:#6fe0ff; --gold:#ffd166; --ok:#7fd069;
+    --display:'Bangers','Impact','Arial Black',sans-serif; --body:'Nunito','Segoe UI',system-ui,sans-serif;
+  }
+  html,body{height:100%}
+  body{margin:0;background:var(--night);color:var(--ink);font-family:var(--body);overflow:hidden}
+  #app{display:flex;flex-direction:column;height:100vh;max-width:1400px;margin:0 auto}
+  #stage{position:relative;flex:1;min-height:0}
+  #game{position:absolute;inset:0}
+  #game canvas{display:block;margin:0 auto}
+  #vignette{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 0 transparent;transition:box-shadow .2s}
+  #hud{position:absolute;top:10px;left:12px;right:12px;display:flex;align-items:center;gap:14px;pointer-events:none;font-weight:800}
+  #hud .spacer{flex:1}
+  #hud .lvl{font-family:var(--display);font-size:26px;letter-spacing:1px;color:var(--moon);text-shadow:0 2px 0 #000}
+  #hud .lives{font-size:26px;letter-spacing:2px;color:var(--danger);text-shadow:0 2px 0 #000}
+  #hud .score{font-family:var(--display);font-size:26px;color:#fff;text-shadow:0 2px 0 #000;font-variant-numeric:tabular-nums}
+  #hud .combo{font-size:14px;color:var(--gold);text-transform:uppercase;letter-spacing:1px}
+  .item{pointer-events:auto;cursor:pointer;border:0;border-radius:12px;padding:6px 12px;background:rgba(0,0,0,.45);color:#fff;font-family:var(--body);font-weight:800;font-size:16px;display:flex;align-items:center;gap:6px;box-shadow:0 2px 0 rgba(0,0,0,.6)}
+  .item:disabled{opacity:.4;cursor:not-allowed}
+  .item kbd{font-size:11px;background:#fff;color:#000;border-radius:4px;padding:1px 5px;font-family:var(--body)}
+  .item.stop{outline:2px solid var(--ice)} .item.bomb{outline:2px solid var(--gold)}
+  .item:focus-visible{outline:3px solid #fff}
+  #deck{background:var(--panel);border-top:3px solid #000;padding:12px 18px 14px;display:grid;grid-template-columns:1fr auto;gap:12px 18px;align-items:center}
+  #sentence{font-size:clamp(20px,2.6vw,32px);font-weight:800;line-height:1.25;text-wrap:balance;min-height:1.3em}
+  #heard{font-size:16px;color:var(--muted);min-height:1.4em;margin-top:6px;line-height:1.5}
+  #heard .w{padding:0 2px;border-radius:4px}
+  #heard .hit{color:var(--ok)} #heard .miss{color:var(--danger);text-decoration:line-through}
+  #status{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+  #controls{display:flex;flex-direction:column;align-items:center;gap:8px}
+  #mic{width:92px;height:92px;border-radius:50%;border:0;background:var(--panel2);color:#fff;font-size:40px;cursor:pointer;box-shadow:0 4px 0 #000;position:relative}
+  #mic.on{background:var(--danger);animation:pulse 1s infinite}
+  #mic:focus-visible{outline:3px solid #fff}
+  @keyframes pulse{0%{box-shadow:0 4px 0 #000,0 0 0 0 rgba(255,77,90,.6)}100%{box-shadow:0 4px 0 #000,0 0 0 22px rgba(255,77,90,0)}}
+  .small{border:0;border-radius:10px;background:var(--panel2);color:var(--ink);padding:6px 10px;font-family:var(--body);font-weight:800;cursor:pointer;font-size:14px}
+  .small:focus-visible{outline:3px solid #fff}
+  #row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center;grid-column:1/-1;font-size:13px;color:var(--muted)}
+  #row2 select,#typed{background:var(--panel2);color:var(--ink);border:0;border-radius:8px;padding:6px 8px;font-family:var(--body);font-size:13px}
+  #typed{display:none;width:320px;font-size:15px}
+  #typed.show{display:inline-block}
+  #overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(10,8,30,.78);z-index:5}
+  #overlay.hidden{display:none}
+  .card{background:var(--panel);border:3px solid #000;border-radius:18px;padding:28px 34px;max-width:640px;text-align:center;box-shadow:0 10px 0 #000}
+  .card h1{font-family:var(--display);font-size:72px;margin:0;color:var(--zombie);letter-spacing:2px;text-shadow:4px 4px 0 #000,0 0 30px rgba(127,208,105,.4);line-height:1}
+  .card h2{font-family:var(--display);font-size:44px;margin:0 0 8px;color:var(--moon);letter-spacing:1px;text-shadow:3px 3px 0 #000}
+  .card p{color:var(--muted);font-size:16px;line-height:1.5;margin:10px 0}
+  .card .big{font-family:var(--display);font-size:28px;letter-spacing:1px;padding:12px 34px;border-radius:14px;border:0;background:var(--zombie);color:#0b2a05;cursor:pointer;box-shadow:0 5px 0 #000;margin-top:10px}
+  .card .big:active{transform:translateY(3px);box-shadow:0 2px 0 #000}
+  .card .big:focus-visible{outline:3px solid #fff}
+  .card ul{text-align:left;color:var(--ink);font-size:15px;line-height:1.6;padding-left:20px}
+  #banner{position:absolute;left:0;right:0;top:34%;text-align:center;pointer-events:none;z-index:4;font-family:var(--display);font-size:76px;color:var(--moon);text-shadow:4px 4px 0 #000;letter-spacing:3px;opacity:0;transition:opacity .25s}
+  #banner.show{opacity:1}
+  #banner small{display:block;font-family:var(--body);font-weight:800;font-size:20px;color:#fff;letter-spacing:1px}
+  @media (prefers-reduced-motion:reduce){#mic.on{animation:none}}
+  /* phones & foldables */
+  #app{height:100dvh}
+  button,select,input{touch-action:manipulation}
+  body.mobile .item kbd{display:none}
+  @media (max-width:980px){
+    #hud{gap:8px;top:6px;left:8px;right:8px;flex-wrap:wrap}
+    #hud .lvl{font-size:18px} #hud .lives{font-size:20px} #hud .score{font-size:20px} #hud .combo{font-size:11px}
+    .item{padding:5px 9px;font-size:14px}
+    #deck{padding:8px 12px 10px;gap:6px 12px}
+    #sentence{font-size:clamp(17px,4.2vw,24px)}
+    #heard{font-size:14px} #status{font-size:11px}
+    #mic{width:74px;height:74px;font-size:32px}
+    #row2{font-size:12px} #typed{width:min(320px,60vw)}
+    .card{padding:18px 18px;max-width:92vw;margin:0 4vw}
+    .card h1{font-size:46px} .card h2{font-size:34px} .card p{font-size:14px} .card ul{font-size:13px;padding-left:16px} .card .big{font-size:22px;padding:10px 26px}
+    #banner{font-size:44px} #banner small{font-size:15px}
+  }
+  @media (max-width:600px){
+    #stage{min-height:34vh} #controls{flex-direction:row}
+    #voiceSel{max-width:150px}
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="stage">
+    <div id="game"></div>
+    <div id="vignette"></div>
+    <div id="hud">
+      <span class="lvl" id="hudLevel">LEVEL 1</span>
+      <span class="lives" id="hudLives">♥♥♥</span>
+      <span class="spacer"></span>
+      <button class="item stop" id="btnStop" title="Time Stop: freeze the zombie for 6 seconds">⏱ <span id="cntStop">2</span> <kbd>1</kbd></button>
+      <button class="item bomb" id="btnBomb" title="Bomb: skip this sentence">💣 <span id="cntBomb">2</span> <kbd>2</kbd></button>
+      <span class="spacer"></span>
+      <span class="combo" id="hudCombo"></span>
+      <span class="score" id="hudScore">0</span>
+    </div>
+    <div id="banner"></div>
+    <div id="overlay">
+      <div class="card" id="card">
+        <h1>ZOMBIE SPEAK</h1>
+        <p>A zombie is coming, holding a sentence. <b>Say the sentence out loud</b> clearly before it reaches you and it explodes!</p>
+        <ul>
+          <li>🎤 The mic listens automatically. Press <b>Space</b> to toggle it. <b>L</b> plays the sentence.</li>
+          <li>⏱ Time Stop (key 1) freezes the zombie. 💣 Bomb (key 2) blows up a sentence you want to skip.</li>
+          <li>❤ You have 3 lives. Beat 5 zombies to meet the level boss.</li>
+        </ul>
+        <button class="big" id="btnStart">START</button>
+        <p id="srWarn" style="color:var(--danger);display:none">Speech recognition isn't available in this browser. Use Chrome (PC or Android) or Edge, or type the sentence instead.</p>
+        <p id="micHint" style="color:var(--gold);display:none">Mic not starting? Open this page in the <b>Chrome browser</b> itself (not inside another app: tap ⋮ → "Open in browser"), then allow the microphone.</p>
+        <p id="diag" style="font-size:12px;color:var(--muted);line-height:1.5"></p>
+        <a id="openChrome" class="big" style="display:none;text-decoration:none;font-size:20px;background:var(--gold)" href="#">OPEN IN CHROME</a>
+      </div>
+    </div>
+  </div>
+  <div id="deck">
+    <div>
+      <div id="sentence">Press START</div>
+      <div id="heard"></div>
+      <div id="status">ready</div>
+    </div>
+    <div id="controls">
+      <button id="mic" title="Toggle microphone (Space)">🎤</button>
+      <button class="small" id="btnListen" title="Hear the sentence (L)">🔊 Listen</button>
+    </div>
+    <div id="row2">
+      <label>Voice <select id="voiceSel"></select></label>
+      <label><input type="checkbox" id="autoMic" checked> Auto mic</label>
+      <label><input type="checkbox" id="typeMode"> Type instead</label>
+      <input id="typed" placeholder="Type the sentence and press Enter">
+      <button class="small" id="btnMute">🔈 Sound</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.80.1/phaser.min.js"></script>
+<script>
+/* ================= CONTENT ================= */
+const LEVELS = [
+ { name:'The Backyard', sky:[0x1b1740,0x3b2a6b], hill:0x233a2a, speed:38, bossSpeed:26,
+   sentences:[
+    "My brother collects unusual rocks from the riverbank.",
+    "The gentle giraffe stretched its neck toward the leaves.",
+    "Our teacher explained the water cycle with a diagram.",
+    "A curious fox wandered quietly through the snowy forest.",
+    "Grandma's garden is full of fragrant purple lavender.",
+    "The astronaut floated gracefully inside the space station.",
+    "We measured the plant's growth every single morning.",
+    "The librarian recommended a thrilling adventure novel."],
+   boss:[
+    "The zombie brigade marched through the neighborhood searching for delicious snacks.",
+    "Every child on our street hid behind the tallest oak tree.",
+    "Fortunately, the brave kids chased the zombies away with a giant water balloon."] },
+ { name:'The Library', sky:[0x14203a,0x2b4a7a], hill:0x1f3346, speed:48, bossSpeed:30,
+   sentences:[
+    "The storm knocked out the power, so we lit candles and told stories.",
+    "Penguins cannot fly, but they are remarkably fast swimmers.",
+    "I wanted to finish the puzzle, yet my eyes were too tired.",
+    "The volcano had been silent for centuries, and then it suddenly rumbled.",
+    "Maria practiced the violin daily, and her recital was flawless.",
+    "The recipe seemed simple, but the soufflé collapsed anyway.",
+    "Bees gather nectar from flowers, and they turn it into honey.",
+    "The museum was crowded, so we explored the quiet dinosaur wing."],
+   boss:[
+    "The zombies stormed the library, but the librarian demanded absolute silence.",
+    "They tried to read the dictionary, yet none of them could pronounce a single word.",
+    "Finally, the embarrassed zombies apologized and quietly returned every book."] },
+ { name:'The Science Lab', sky:[0x0f2a2a,0x1d5a55], hill:0x173a33, speed:58, bossSpeed:34,
+   sentences:[
+    "Although the mountain trail was steep, the hikers reached the summit before noon.",
+    "Because the river flooded last spring, the villagers built a stronger bridge.",
+    "The scientist who discovered the fossil named it after her grandmother.",
+    "When the orchestra began to play, the entire audience fell silent.",
+    "If we recycle more carefully, our school can reduce its waste by half.",
+    "The detective noticed a muddy footprint that everyone else had overlooked.",
+    "Even though the experiment failed twice, Leo refused to abandon his hypothesis.",
+    "The ancient map, which was drawn on leather, revealed a hidden harbor."],
+   boss:[
+    "When the zombies invaded the laboratory, they accidentally mixed two bubbling chemicals.",
+    "Although the explosion was harmless, it turned their hair a brilliant shade of pink.",
+    "Because they were so embarrassed, the zombies promised to study chemistry properly."] },
+ { name:'The Museum', sky:[0x2a1630,0x6b2d5a], hill:0x3a2238, speed:68, bossSpeed:38,
+   sentences:[
+    "Photosynthesis allows plants to convert sunlight into chemical energy.",
+    "The archaeologists carefully excavated the remains of a medieval marketplace.",
+    "Migrating monarch butterflies navigate thousands of miles using the sun's position.",
+    "The committee debated whether the new playground should include a climbing wall.",
+    "Erosion gradually reshaped the canyon over millions of years.",
+    "A balanced ecosystem depends on the relationships between predators and prey.",
+    "The inventor patented an ingenious device that purifies water using sunlight.",
+    "Persuasive writers support their arguments with evidence and vivid examples."],
+   boss:[
+    "The zombie curator organized an exhibition celebrating the history of brains.",
+    "Unfortunately, the visitors preferred the dinosaur skeletons and the Egyptian artifacts.",
+    "Discouraged but determined, the curator vowed to design a more fascinating display."] },
+ { name:'The Observatory', sky:[0x090a1e,0x1c1650], hill:0x151a33, speed:80, bossSpeed:42,
+   sentences:[
+    "Despite the unexpected blizzard, the expedition team documented three previously unknown species.",
+    "The novel's protagonist gradually realizes that courage often means admitting a mistake.",
+    "Historians believe the ancient civilization collapsed after decades of severe drought.",
+    "By analyzing the tree rings, researchers reconstructed the region's climate history.",
+    "The engineer redesigned the bridge so that it could withstand powerful earthquakes.",
+    "Although the telescope was small, it revealed the delicate rings of Saturn clearly.",
+    "Volunteers transformed the abandoned lot into a thriving community vegetable garden.",
+    "The orchestra's conductor emphasized that precision matters more than sheer volume."],
+   boss:[
+    "The zombie king climbed the observatory tower to claim the moon as his personal snack.",
+    "Astonishingly, the telescope revealed that the moon was merely a distant rocky sphere.",
+    "Humbled by the vastness of the universe, the zombie king finally surrendered to the children."] },
+];
+const KILLS_PER_LEVEL = 5, PASS = 0.75, W = 1280, H = 720, GROUND = 610, PLAYER_X = 210, REACH_X = 330;
+
+/* ================= GAME STATE ================= */
+const G = { level:0, lives:3, score:0, kills:0, combo:0, stop:2, bomb:2, state:'title',
+  target:'', targetWords:[], boss:false, bossIdx:0, pool:[], frozen:false, accepting:false };
+const $ = id => document.getElementById(id);
+
+/* ================= AUDIO (synth) ================= */
+let AC = null, muted = false;
+function ac(){ if(!AC){ AC = new (window.AudioContext||window.webkitAudioContext)(); } if(AC.state==='suspended') AC.resume(); return AC; }
+function tone(f, dur, type='sine', vol=0.3, slide=null, filt=null){
+  if(muted||!AC) return; const c=ac(), o=c.createOscillator(), g=c.createGain(); o.type=type; o.frequency.setValueAtTime(f,c.currentTime);
+  if(slide) o.frequency.exponentialRampToValueAtTime(slide, c.currentTime+dur);
+  g.gain.setValueAtTime(vol,c.currentTime); g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+dur);
+  let node=o; if(filt){ const fl=c.createBiquadFilter(); fl.type='lowpass'; fl.frequency.value=filt; o.connect(fl); node=fl; }
+  node.connect(g); g.connect(c.destination); o.start(); o.stop(c.currentTime+dur);
+}
+function noise(dur, vol=0.5, filt=800){
+  if(muted||!AC) return; const c=ac(), n=c.sampleRate*dur, b=c.createBuffer(1,n,c.sampleRate), d=b.getChannelData(0);
+  for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
+  const s=c.createBufferSource(); s.buffer=b; const fl=c.createBiquadFilter(); fl.type='lowpass'; fl.frequency.value=filt;
+  const g=c.createGain(); g.gain.value=vol; s.connect(fl); fl.connect(g); g.connect(c.destination); s.start();
+}
+const SFX = {
+  thump(){ tone(70,0.14,'sine',0.6,35); },
+  explode(){ noise(0.6,0.7,700); tone(90,0.45,'triangle',0.5,25); },
+  success(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>tone(f,0.18,'square',0.12),i*70)); },
+  fail(){ tone(200,0.35,'sawtooth',0.2,110,900); },
+  growl(){ tone(95,0.5,'sawtooth',0.18,60,500); },
+  hurt(){ noise(0.3,0.5,400); tone(150,0.5,'square',0.25,60); },
+  timestop(){ tone(1400,0.7,'sine',0.3,180); setTimeout(()=>tone(300,0.4,'sine',0.2,600),300); },
+  levelup(){ [392,523,659,784,1046,1318].forEach((f,i)=>setTimeout(()=>tone(f,0.25,'triangle',0.18),i*90)); },
+  bossroar(){ tone(60,1.2,'sawtooth',0.35,40,400); noise(0.8,0.3,300); },
+  pickup(){ tone(880,0.12,'square',0.12,1320); }
+};
+
+/* ================= SPEECH: recognition & TTS ================= */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false, wantListen = false, buffer = [];   // buffer = words heard since this zombie spawned
+function normWords(s){ return s.toLowerCase().replace(/['’\-]/g,'').replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(Boolean); }
+function lcsMask(target, said){ // returns {count, mask[] over target}
+  const n=target.length, m=said.length, dp=Array.from({length:n+1},()=>new Array(m+1).fill(0));
+  for(let i=n-1;i>=0;i--) for(let j=m-1;j>=0;j--) dp[i][j] = target[i]===said[j] ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j],dp[i][j+1]);
+  const mask=new Array(n).fill(false); let i=0,j=0;
+  while(i<n&&j<m){ if(target[i]===said[j]){mask[i]=true;i++;j++;} else if(dp[i+1][j]>=dp[i][j+1]) i++; else j++; }
+  return {count:dp[0][0], mask};
+}
+function evaluate(saidWords){
+  const t=G.targetWords; const tail=saidWords.slice(-(t.length+5));
+  const r=lcsMask(t, tail); return {ratio:r.count/t.length, mask:r.mask, tail};
+}
+function renderHeard(res, raw){
+  if(!res){ $('heard').textContent = raw||''; return; }
+  $('heard').innerHTML = G.targetWords.map((w,i)=>`<span class="w ${res.mask[i]?'hit':'miss'}">${w}</span>`).join(' ') +
+    ` <span style="opacity:.7">— ${Math.round(res.ratio*100)}%</span>`;
+}
+const IS_MOBILE = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints>1 && matchMedia('(pointer:coarse)').matches);
+const IN_FRAME = (()=>{ try{ return window.self!==window.top; }catch(e){ return true; } })();
+let lastFinalCount=0, restartTimer=null;
+function setupSR(){
+  if(!SR){ $('srWarn').style.display='block'; $('typeMode').checked=true; $('typed').classList.add('show'); return; }
+  rec = new SR();
+  rec.lang = 'en-US';            // <-- THE FIX: without this Chrome uses the OS/browser language (ko-KR)
+  // Android Chrome handles continuous mode badly (stops after one phrase, drops results) → short sessions + auto restart
+  rec.continuous = !IS_MOBILE; rec.interimResults = true; rec.maxAlternatives = 3;
+  rec.onstart = ()=>{ listening=true; lastFinalCount=0; $('mic').classList.add('on'); setStatus('listening… say the sentence'); };
+  rec.onend = ()=>{ listening=false; $('mic').classList.remove('on');
+    if(wantListen && G.state==='play' && !ttsActive){ clearTimeout(restartTimer); restartTimer=setTimeout(()=>{ if(wantListen&&!listening){ try{rec.start();}catch(e){ setStatus('mic restart failed: '+e.message); } } }, IS_MOBILE?400:250); }
+    else setStatus('mic off'); };
+  rec.onerror = e=>{
+    if(e.error==='not-allowed'||e.error==='service-not-allowed'){ wantListen=false; setStatus('microphone blocked — allow mic access, or use "Type instead"'); $('typeMode').checked=true; $('typed').classList.add('show'); $('micHint').style.display='block'; }
+    else if(e.error==='network'){ setStatus('speech service unreachable (network) — check internet / Google app'); }
+    else if(e.error==='audio-capture'){ setStatus('no microphone found'); }
+    else if(e.error!=='no-speech' && e.error!=='aborted'){ setStatus('mic error: '+e.error); }
+  };
+  rec.onresult = e=>{
+    if(!G.accepting||ttsActive) return;
+    let interim='', gotFinal=false;
+    for(let i=0;i<e.results.length;i++){ const r=e.results[i];
+      if(r.isFinal){ if(i>=lastFinalCount){ // pick the alternative that matches the target best, append to the running buffer
+          let bt=r[0].transcript, bs=-1; for(let k=0;k<r.length;k++){ const s=evaluate(normWords(r[k].transcript)).ratio; if(s>bs){bs=s;bt=r[k].transcript;} }
+          buffer.push(...normWords(bt)); lastFinalCount=i+1; gotFinal=true; } }
+      else interim += r[0].transcript+' '; }
+    const said = buffer.concat(normWords(interim));
+    const res = evaluate(said);
+    renderHeard(res, said.join(' '));
+    if(res.ratio>=PASS){ scene.zombieKilled(true, res.ratio); return; }
+    // a final segment finished and it was a real attempt but wrong → penalty
+    if(gotFinal && buffer.length >= G.targetWords.length*0.8){ scene.wrongAttempt(res); }
+  };
+}
+function startListening(){ if(!rec) return; wantListen=true; if(!listening){ try{ rec.start(); }catch(e){} } }
+function stopListening(){ wantListen=false; if(rec&&listening){ try{ rec.stop(); }catch(e){} } }
+function resetRecognizer(){ // clear accumulated results for a new sentence
+  buffer=[]; if(!rec) return; if(listening){ try{ rec.abort(); }catch(e){} }
+}
+function setStatus(s){ $('status').textContent=s; }
+
+/* TTS — pick a real English voice (fixes the "Korean voice reading English" problem on Windows) */
+let voices=[], voice=null;
+function loadVoices(){
+  voices = speechSynthesis.getVoices().filter(v=>/^en[-_]/i.test(v.lang));
+  const sel=$('voiceSel'); sel.innerHTML='';
+  if(!voices.length){ sel.innerHTML='<option>No English voice installed</option>'; voice=null; return; }
+  const score=v=>(/natural/i.test(v.name)?4:0)+(/google/i.test(v.name)?3:0)+(/en-US/i.test(v.lang)?2:0)+(/zira|aria|jenny|samantha/i.test(v.name)?1:0);
+  voices.sort((a,b)=>score(b)-score(a));
+  voices.forEach((v,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=`${v.name} (${v.lang})`; sel.appendChild(o); });
+  voice=voices[0];
+}
+if('speechSynthesis' in window){ loadVoices(); speechSynthesis.onvoiceschanged=loadVoices; }
+$('voiceSel').onchange=e=>{ voice=voices[+e.target.value]; speak(G.target); };
+let ttsActive=false;
+function speak(text){
+  if(!('speechSynthesis' in window)||!text) return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text); u.lang='en-US'; if(voice) u.voice=voice; u.rate=0.92; u.pitch=1;
+  // mute the mic while the computer talks, so the game can't "hear itself" through the speakers
+  const resume=$('autoMic').checked && !$('typeMode').checked && G.state==='play';
+  ttsActive=true; if(rec&&listening){ wantListen=false; try{rec.abort();}catch(e){} }
+  u.onend=u.onerror=()=>{ ttsActive=false; if(resume) setTimeout(startListening,200); };
+  speechSynthesis.speak(u);
+}
+
+/* ================= PHASER SCENE ================= */
+let scene=null;
+class Main extends Phaser.Scene {
+  constructor(){ super('main'); }
+  create(){
+    scene=this;
+    this.makeTextures();
+    this.bg=this.add.graphics(); this.drawBackground(0);
+    this.stars=this.add.group();
+    for(let i=0;i<60;i++){ const s=this.add.image(Phaser.Math.Between(0,W),Phaser.Math.Between(0,320),'star').setAlpha(Math.random()*0.8+0.2).setScale(Math.random()*0.8+0.4); this.stars.add(s);
+      this.tweens.add({targets:s,alpha:0.1,duration:Phaser.Math.Between(800,2500),yoyo:true,repeat:-1,delay:Math.random()*2000}); }
+    this.moon=this.add.image(1080,120,'moon');
+    this.hills=this.add.graphics(); this.drawHills(0);
+    this.props=this.add.group();
+    [420,760,1000,1180].forEach((x,i)=>{ const p=this.add.image(x,GROUND+8,i%2?'pumpkin':'stone').setOrigin(0.5,1); this.props.add(p); });
+    this.fog=[this.add.image(300,GROUND-20,'fog').setAlpha(0.18),this.add.image(900,GROUND-40,'fog').setAlpha(0.14)];
+    this.player=this.add.image(PLAYER_X,GROUND,'kid').setOrigin(0.5,1);
+    this.tweens.add({targets:this.player,y:GROUND-6,duration:600,yoyo:true,repeat:-1,ease:'Sine.inOut'});
+    this.chunks=this.add.particles(0,0,'chunk',{speed:{min:120,max:460},angle:{min:200,max:340},lifespan:{min:500,max:1100},gravityY:900,scale:{start:1.2,end:0},rotate:{min:0,max:360},quantity:1,emitting:false});
+    this.sparks=this.add.particles(0,0,'spark',{speed:{min:200,max:600},lifespan:500,scale:{start:1,end:0},blendMode:'ADD',quantity:1,emitting:false});
+    this.dust=this.add.particles(0,0,'dust',{speed:{min:40,max:160},angle:{min:200,max:340},lifespan:{min:400,max:900},gravityY:200,scale:{start:1.4,end:0},alpha:{start:0.8,end:0},quantity:1,emitting:false});
+    this.iceOverlay=this.add.rectangle(W/2,H/2,W,H,0x6fe0ff,0).setDepth(20);
+    this.zombie=null; this.heartTimer=0;
+    this.input.keyboard.on('keydown',e=>{
+      if(document.activeElement===$('typed')) return;
+      if(e.code==='Space'){ e.preventDefault(); toggleMic(); }
+      if(e.key==='1') useTimeStop(); if(e.key==='2') useBomb(); if(e.key==='l'||e.key==='L') speak(G.target);
+    });
+  }
+  makeTextures(){
+    const g=this.add.graphics();
+    // star
+    g.fillStyle(0xffffff); g.fillCircle(3,3,3); g.generateTexture('star',6,6); g.clear();
+    // moon
+    for(let r=110;r>60;r-=10){ g.fillStyle(0xffe9a8,0.05); g.fillCircle(120,120,r); } g.fillStyle(0xffe9a8); g.fillCircle(120,120,58); g.fillStyle(0xf0d48a); g.fillCircle(100,105,10); g.fillCircle(135,140,7); g.fillCircle(128,100,5); g.generateTexture('moon',240,240); g.clear();
+    // fog
+    g.fillStyle(0xffffff); g.fillEllipse(300,40,600,80); g.generateTexture('fog',600,80); g.clear();
+    // chunk & spark
+    g.fillStyle(0x7fd069); g.fillRect(0,0,14,14); g.fillStyle(0x4f9a3f); g.fillRect(0,9,14,5); g.generateTexture('chunk',14,14); g.clear();
+    g.fillStyle(0xffd166); g.fillCircle(5,5,5); g.generateTexture('spark',10,10); g.clear();
+    // pumpkin
+    g.fillStyle(0x3a7a2a); g.fillRect(26,0,8,12); g.fillStyle(0xf28c28); g.fillEllipse(30,32,56,40); g.fillStyle(0xd9741c); g.fillEllipse(18,32,14,38); g.fillEllipse(42,32,14,38);
+    g.fillStyle(0x3a1a00); g.fillTriangle(18,26,26,26,22,18); g.fillTriangle(34,26,42,26,38,18); g.fillRect(20,38,20,4); g.generateTexture('pumpkin',60,52); g.clear();
+    // stone
+    g.fillStyle(0x8a8fa8); g.fillRoundedRect(0,10,44,50,10); g.fillStyle(0x6e7390); g.fillRect(0,50,44,10); g.fillStyle(0x4a4e66); g.fillRect(10,26,24,4); g.fillRect(10,36,24,4); g.generateTexture('stone',44,60); g.clear();
+    // kid (facing right, megaphone)
+    g.fillStyle(0x2a5bd7); g.fillRoundedRect(22,54,40,46,8);            // shirt
+    g.fillStyle(0x233047); g.fillRect(26,98,14,26); g.fillRect(44,98,14,26); // legs
+    g.fillStyle(0xf1c9a5); g.fillCircle(42,34,22);                        // head
+    g.fillStyle(0x3b2a1a); g.fillEllipse(42,18,46,20); g.fillRect(18,16,10,18); // hair
+    g.fillStyle(0x222); g.fillCircle(50,34,3); g.fillCircle(38,34,3);
+    g.fillStyle(0xc0392b); g.fillRect(48,42,8,3);
+    g.fillStyle(0xf1c9a5); g.fillRect(58,62,16,10);                       // arm
+    g.fillStyle(0xffd166); g.fillTriangle(72,70,72,54,100,46); g.fillTriangle(72,70,100,46,100,78); g.fillStyle(0xe0b24a); g.fillRect(96,44,6,36);
+    g.generateTexture('kid',104,124); g.clear();
+    // zombie frames (facing left)
+    const drawZ=(legsApart,ko)=>{
+      g.fillStyle(0x6b3fa0); g.fillRoundedRect(30,70,52,60,8);           // torn shirt
+      g.fillStyle(0x4b2a75); g.fillTriangle(30,130,50,130,40,118); g.fillTriangle(60,130,82,130,72,116);
+      g.fillStyle(0x3b3b55); if(legsApart){ g.fillRect(28,126,18,34); g.fillRect(64,126,18,34);} else { g.fillRect(36,126,18,34); g.fillRect(58,126,18,34); }
+      g.fillStyle(0x7fd069); g.fillRect(0,80,42,14); g.fillRect(0,78,10,20);   // arms forward (left)
+      g.fillStyle(0x7fd069); g.fillCircle(56,40,34);                      // head
+      g.fillStyle(0x5aa64a); g.fillEllipse(40,30,14,8); g.fillEllipse(70,52,10,6);
+      g.fillStyle(0x2f6a2a); g.fillRect(24,6,64,10); g.fillRect(30,0,20,14); g.fillRect(60,0,18,12);  // hair
+      if(ko){ g.lineStyle(4,0x222222); [[42,40],[66,42]].forEach(([x,y])=>{ g.lineBetween(x-7,y-7,x+7,y+7); g.lineBetween(x+7,y-7,x-7,y+7); });
+        g.fillStyle(0x3a1a3a); g.fillEllipse(50,62,22,12); }
+      else { g.fillStyle(0xffffff); g.fillCircle(42,40,11); g.fillCircle(66,42,8);
+        g.fillStyle(0x222); g.fillCircle(40,42,5); g.fillCircle(66,43,4);
+        g.fillStyle(0x3a1a3a); g.fillRoundedRect(34,58,30,10,4); g.fillStyle(0xffffff); g.fillRect(40,58,6,5); g.fillRect(52,58,6,5); }
+    };
+    drawZ(true); g.generateTexture('z1',100,160); g.clear(); drawZ(false); g.generateTexture('z2',100,160); g.clear(); drawZ(false,true); g.generateTexture('z3',100,160); g.clear();
+    g.fillStyle(0xd8d2c0); g.fillCircle(8,8,8); g.generateTexture('dust',16,16); g.clear();
+    // crown
+    g.fillStyle(0xffd166); g.fillTriangle(0,30,10,0,20,30); g.fillTriangle(15,30,30,0,45,30); g.fillTriangle(40,30,50,0,60,30); g.fillRect(0,26,60,12); g.fillStyle(0xff4d5a); g.fillCircle(30,30,4); g.generateTexture('crown',60,40); g.clear();
+    g.destroy();
+  }
+  drawBackground(l){ const L=LEVELS[l]; this.bg.clear(); this.bg.fillGradientStyle(L.sky[0],L.sky[0],L.sky[1],L.sky[1],1); this.bg.fillRect(0,0,W,H); }
+  drawHills(l){ const L=LEVELS[l]; const g=this.hills; g.clear();
+    g.fillStyle(L.hill,1); g.fillEllipse(200,GROUND+40,700,260); g.fillEllipse(900,GROUND+60,900,300); g.fillEllipse(1250,GROUND+40,500,220);
+    g.fillStyle(0x1a2a1c,1); g.fillRect(0,GROUND,W,H-GROUND); g.fillStyle(0x2c4a2e,1); g.fillRect(0,GROUND,W,10);
+    for(let x=0;x<W;x+=40){ g.fillStyle(0x3a6a3c,1); g.fillTriangle(x,GROUND,x+6,GROUND-12,x+12,GROUND); }
+  }
+  spawnZombie(){
+    const L=LEVELS[G.level];
+    if(G.boss){ G.target=L.boss[G.bossIdx]; } else { if(!G.pool.length) G.pool=Phaser.Utils.Array.Shuffle(L.sentences.slice()); G.target=G.pool.pop(); }
+    G.targetWords=normWords(G.target);
+    const body=this.add.image(0,0,'z1').setOrigin(0.5,1);
+    const s=G.boss?1.8:1.05;
+    const sign=this.add.container(0,-215*s);
+    const txt=this.add.text(0,0,G.target,{fontFamily:'Nunito, sans-serif',fontSize:G.boss?'22px':'20px',fontStyle:'bold',color:'#2a1a08',wordWrap:{width:G.boss?420:320},align:'center'}).setOrigin(0.5);
+    const board=this.add.graphics(); const bw=txt.width+30, bh=txt.height+24;
+    board.fillStyle(0x000000,0.25); board.fillRoundedRect(-bw/2+4,-bh/2+6,bw,bh,10);
+    board.fillStyle(0xc98a4b); board.fillRoundedRect(-bw/2,-bh/2,bw,bh,10); board.lineStyle(4,0x7a4a1e); board.strokeRoundedRect(-bw/2,-bh/2,bw,bh,10);
+    board.fillStyle(0x7a4a1e); board.fillRect(-6,bh/2,12,28);
+    sign.add([board,txt]);
+    const parts=[body,sign]; let crown=null;
+    if(G.boss){ crown=this.add.image(-6*s,-152*s,'crown').setScale(s*0.9); parts.push(crown); }
+    const z=this.add.container(W+120,GROUND,parts); z.body=body; z.sign=sign; z.crown=crown;
+    body.setScale(s); z.speed=G.boss?L.bossSpeed:L.speed; z.alive=true; z.frame=0;
+    z.walk=this.time.addEvent({delay:G.boss?320:220,loop:true,callback:()=>{ z.frame^=1; body.setTexture(z.frame?'z2':'z1'); body.y=z.frame?-4:0; sign.angle=z.frame?2:-2; }});
+    this.zombie=z; buffer=[];
+    if(G.boss) SFX.bossroar(); else SFX.growl();
+    $('sentence').textContent=G.target; $('heard').textContent='';
+    G.accepting=true;
+    resetRecognizer(); if($('autoMic').checked && !$('typeMode').checked) setTimeout(startListening,150);
+    setStatus(G.boss?`BOSS — sentence ${G.bossIdx+1} of 3`:'say the sentence clearly (L = listen first)');
+  }
+  update(t,dt){
+    const z=this.zombie; this.fog[0].x-=dt*0.01; if(this.fog[0].x<-300) this.fog[0].x=W+300; this.fog[1].x-=dt*0.006; if(this.fog[1].x<-300) this.fog[1].x=W+300;
+    if(!z||!z.alive||G.state!=='play') return;
+    if(!G.frozen) z.x-=z.speed*dt/1000;
+    const d=Phaser.Math.Clamp((z.x-REACH_X)/(W+120-REACH_X),0,1); // 1 far → 0 near
+    const danger=Math.pow(1-d,2);
+    $('vignette').style.boxShadow=`inset 0 0 ${60+danger*200}px ${danger*40}px rgba(255,77,90,${danger*0.7})`;
+    if(!G.frozen){ this.heartTimer-=dt; if(this.heartTimer<=0){ SFX.thump(); setTimeout(()=>SFX.thump(),120); this.heartTimer=350+900*d; } }
+    if(z.x<=REACH_X) this.zombieReached();
+  }
+  knockDown(z,big,bomb){
+    // zombie keels over backwards (rotates around its feet), sign tumbles off, dust puff on landing
+    z.body.setTexture('z3'); z.body.y=0; const s=z.body.scaleX;
+    this.tweens.add({targets:z.sign,y:z.sign.y-30,angle:120,x:60*s,alpha:0,duration:550,ease:'Quad.in'});
+    this.sparks.explode(big?40:18,z.x,z.y-90*s);
+    if(bomb){ this.dust.explode(50,z.x,z.y-70*s); this.cameras.main.shake(250,0.012); SFX.explode(); }
+    this.tweens.add({targets:z,angle:88,duration:big?700:520,ease:'Bounce.out',
+      onComplete:()=>{ this.dust.explode(big?45:22,z.x+40*s,z.y-6); this.cameras.main.shake(big?350:160,big?0.012:0.006); noise(0.25,0.35,500);
+        this.tweens.add({targets:z,alpha:0,y:z.y+10,duration:500,delay:400,onComplete:()=>z.destroy()}); }});
+  }
+  zombieKilled(spoken,ratio){
+    const z=this.zombie; if(!z||!z.alive) return; z.alive=false; G.accepting=false; z.walk.remove();
+    this.knockDown(z,G.boss,!spoken); this.zombie=null;
+    if(spoken){
+      G.combo++; const gain=Math.round(G.targetWords.length*10*(1+Math.min(G.combo-1,5)*0.25)*(ratio>=0.95?1.5:1));
+      G.score+=gain; SFX.success(); setStatus(`+${gain}  ${ratio>=0.95?'PERFECT!':'nice!'}`);
+      this.tweens.add({targets:this.player,y:GROUND-40,duration:150,yoyo:true});
+    }
+    if(G.boss){ G.bossIdx++; if(G.bossIdx>=3){ this.levelCleared(); return; } this.time.delayedCall(900,()=>this.spawnZombie()); updateHud(); return; }
+    G.kills++; if(G.kills%3===0&&G.stop<3){G.stop++; SFX.pickup(); flashBanner('+1 ⏱ TIME STOP','',900);} if(G.kills%4===0&&G.bomb<3){G.bomb++; SFX.pickup(); flashBanner('+1 💣 BOMB','',900);}
+    updateHud();
+    if(G.kills>=KILLS_PER_LEVEL){ G.boss=true; G.bossIdx=0; flashBanner('BOSS INCOMING!','Three sentences to defeat it',1800); this.time.delayedCall(1900,()=>this.spawnZombie()); }
+    else this.time.delayedCall(900,()=>this.spawnZombie());
+  }
+  wrongAttempt(res){
+    const z=this.zombie; if(!z||!z.alive) return; G.combo=0; SFX.fail(); SFX.growl();
+    this.tweens.add({targets:z,x:z.x-70,duration:220,ease:'Back.out'}); this.cameras.main.shake(120,0.005);
+    const missed=G.targetWords.filter((w,i)=>!res.mask[i]).slice(0,4).join(', ');
+    setStatus(`not quite — try again${missed?' (missed: '+missed+')':''}`);
+    resetRecognizer(); // clear buffer so the next attempt starts fresh
+  }
+  zombieReached(){
+    const z=this.zombie; z.alive=false; G.accepting=false; z.walk.remove();
+    SFX.hurt(); this.cameras.main.shake(400,0.02); this.cameras.main.flash(200,255,60,60);
+    this.tweens.add({targets:z,alpha:0,x:z.x-60,duration:400,onComplete:()=>z.destroy()}); this.zombie=null;
+    G.lives--; G.combo=0; updateHud(); $('vignette').style.boxShadow='none';
+    if(G.lives<=0){ this.gameOver(); return; }
+    setStatus('ouch! the zombie got you');
+    this.time.delayedCall(1100,()=>this.spawnZombie());
+  }
+  levelCleared(){
+    G.boss=false; G.kills=0; G.pool=[]; G.level++; SFX.levelup(); updateHud();
+    if(G.level>=LEVELS.length){ G.state='won'; stopListening(); showCard(`<h2>YOU WIN!</h2><p>All five bosses defeated. Final score <b style="color:#fff">${G.score}</b>.</p><button class="big" id="btnAgain">PLAY AGAIN</button>`); return; }
+    flashBanner(`LEVEL ${G.level+1}`,LEVELS[G.level].name,2000);
+    this.tweens.add({targets:[this.bg,this.hills],alpha:0,duration:300,yoyo:true,onYoyo:()=>{ this.drawBackground(G.level); this.drawHills(G.level); }});
+    this.time.delayedCall(2100,()=>this.spawnZombie());
+  }
+  gameOver(){ G.state='over'; stopListening(); $('vignette').style.boxShadow='none';
+    showCard(`<h2>GAME OVER</h2><p>Score <b style="color:#fff">${G.score}</b> · reached ${LEVELS[G.level].name}</p><button class="big" id="btnAgain">TRY AGAIN</button>`); }
+  timeStop(){
+    G.frozen=true; SFX.timestop(); this.iceOverlay.setAlpha(0.28); const z=this.zombie; if(z){ z.walk.paused=true; z.body.setTint(0x9fe8ff); }
+    this.tweens.add({targets:this.iceOverlay,alpha:0,duration:6000,ease:'Quad.in'});
+    let n=6; const tick=this.time.addEvent({delay:1000,repeat:5,callback:()=>{ n--; if(n>0) flashBanner(`⏱ ${n}`,'',700); }});
+    this.time.delayedCall(6000,()=>{ G.frozen=false; if(this.zombie&&this.zombie.alive){ this.zombie.walk.paused=false; this.zombie.body.clearTint(); } });
+  }
+}
+
+/* ================= UI glue ================= */
+function updateHud(){
+  $('hudLevel').textContent=`LEVEL ${G.level+1} · ${LEVELS[Math.min(G.level,4)].name.toUpperCase()}`;
+  $('hudLives').textContent='♥'.repeat(G.lives)+'♡'.repeat(Math.max(0,3-G.lives));
+  $('hudScore').textContent=G.score; $('hudCombo').textContent=G.combo>1?`combo ×${G.combo}`:'';
+  $('cntStop').textContent=G.stop; $('cntBomb').textContent=G.bomb; $('btnStop').disabled=G.stop<=0||G.frozen; $('btnBomb').disabled=G.bomb<=0;
+}
+let bannerT=null;
+function flashBanner(big,small,ms){ const b=$('banner'); b.innerHTML=`${big}<small>${small||''}</small>`; b.classList.add('show'); clearTimeout(bannerT); bannerT=setTimeout(()=>b.classList.remove('show'),ms); }
+function showCard(html){ $('card').innerHTML=html; $('overlay').classList.remove('hidden'); const a=$('btnAgain'); if(a) a.onclick=startGame; }
+function startGame(){
+  Object.assign(G,{level:0,lives:3,score:0,kills:0,combo:0,stop:2,bomb:2,state:'play',boss:false,bossIdx:0,pool:[],frozen:false});
+  ac(); $('overlay').classList.add('hidden'); updateHud(); scene.drawBackground(0); scene.drawHills(0);
+  flashBanner('LEVEL 1',LEVELS[0].name,1600); scene.time.delayedCall(1500,()=>scene.spawnZombie());
+}
+function toggleMic(){ if(G.state!=='play') return; if(listening||wantListen) { stopListening(); $('autoMic').checked=false; } else { $('autoMic').checked=true; startListening(); } }
+function useTimeStop(){ if(G.state!=='play'||G.stop<=0||G.frozen||!scene.zombie) return; G.stop--; updateHud(); scene.timeStop(); }
+function useBomb(){ if(G.state!=='play'||G.bomb<=0||!scene.zombie||!scene.zombie.alive) return; G.bomb--; G.combo=0; updateHud(); setStatus('💣 boom — skipped'); scene.zombieKilled(false,0); }
+/* ---- environment diagnostics + explicit mic permission request ---- */
+const UA=navigator.userAgent, IN_APP=/KAKAOTALK|Line\/|FBAN|FBAV|Instagram|NAVER|SamsungBrowser|; wv\)|WebView/i.test(UA), IS_FILE=location.protocol==='file:'||location.protocol==='content:';
+function runDiag(extra){
+  const rows=[];
+  rows.push(`Browser: ${/Chrome\/\d+/.exec(UA)?.[0]||'?'}${IN_APP?' (in-app browser)':''} · ${IS_MOBILE?'mobile':'PC'}`);
+  rows.push(`Page: ${IS_FILE?'local file ⚠':location.protocol.replace(':','')}${IN_FRAME?' · embedded frame':''}${window.isSecureContext?'':' · not secure ⚠'}`);
+  rows.push(`Speech recognition: ${SR?'available':'NOT available ⚠'}`);
+  if(extra) rows.push(extra);
+  $('diag').innerHTML=rows.join('<br>');
+  const showOpen=/Android/i.test(UA)&&!IS_FILE&&(IN_APP||IN_FRAME);
+  if(showOpen){ const a=$('openChrome'); a.style.display='inline-block'; a.href=`intent://${location.host}${location.pathname}${location.search}#Intent;scheme=https;package=com.android.chrome;end`; }
+  if(IS_FILE&&IS_MOBILE) rows.push('Android blocks the microphone for files opened from storage. Open the hosted link instead.');
+  $('diag').innerHTML=rows.join('<br>');
+}
+async function micPermissionState(){ try{ const p=await navigator.permissions.query({name:'microphone'}); return p.state; }catch(e){ return 'unknown'; } }
+async function requestMic(){ // explicit permission prompt before the game starts
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ return {ok:false,why:'getUserMedia unavailable (blocked by this viewer)'}; }
+  try{ const s=await navigator.mediaDevices.getUserMedia({audio:true}); s.getTracks().forEach(t=>t.stop()); return {ok:true}; }
+  catch(e){ return {ok:false,why:e.name+(e.message?': '+e.message:'')}; }
+}
+runDiag();
+micPermissionState().then(st=>runDiag(`Mic permission: ${st}`));
+$('btnStart').onclick=async()=>{
+  const b=$('btnStart'); b.disabled=true; b.textContent='ASKING FOR MIC…';
+  const r=await requestMic();
+  if(!r.ok && !$('typeMode').checked){
+    runDiag(`Mic permission: <b style="color:var(--danger)">denied — ${r.why}</b>`);
+    $('micHint').style.display='block'; b.disabled=false; b.textContent='START ANYWAY (type mode)';
+    $('typeMode').checked=true; $('typed').classList.add('show');
+    b.onclick=()=>{ startGame(); }; return;
+  }
+  startGame(); if(rec && !$('typeMode').checked) startListening();
+};
+$('mic').onclick=toggleMic; $('btnListen').onclick=()=>speak(G.target);
+$('btnStop').onclick=useTimeStop; $('btnBomb').onclick=useBomb;
+$('btnMute').onclick=()=>{ muted=!muted; $('btnMute').textContent=muted?'🔇 Muted':'🔈 Sound'; };
+$('autoMic').onchange=e=>{ if(e.target.checked) startListening(); else stopListening(); };
+$('typeMode').onchange=e=>{ $('typed').classList.toggle('show',e.target.checked); if(e.target.checked){ stopListening(); $('typed').focus(); } else startListening(); };
+$('typed').addEventListener('keydown',e=>{ if(e.key==='Enter'&&G.accepting){ const res=evaluate(normWords(e.target.value)); renderHeard(res); e.target.value=''; if(res.ratio>=PASS) scene.zombieKilled(true,res.ratio); else scene.wrongAttempt(res); } });
+setupSR();
+if(IN_APP||IN_FRAME||IS_FILE){ $('micHint').style.display='block'; }
+if(IS_MOBILE){ document.body.classList.add('mobile'); }
+new Phaser.Game({ type:Phaser.AUTO, parent:'game', width:W, height:H, backgroundColor:'#141232',
+  scale:{ mode:Phaser.Scale.FIT, autoCenter:Phaser.Scale.CENTER_BOTH }, scene:[Main] });
+</script>
+
+</body></html>
